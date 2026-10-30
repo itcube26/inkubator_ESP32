@@ -71,8 +71,8 @@ WebServer server(80);
 // ------------------------ СОСТОЯНИЕ ------------------------
 float   temperature   = NAN;      // текущая температура
 float   humidity      = NAN;      // текущая влажность
-bool    heating       = false;    // включён ли обогрев сейчас
-bool    manualHeat    = false;    // ручной режим нагрева (override с сайта)
+volatile bool heating    = false; // включён ли обогрев сейчас (пишет обработчик HTTP-запроса)
+volatile bool manualHeat = false; // ручной режим нагрева (override с сайта)
 float   setTemp       = DEFAULT_SET_TEMP;
 bool    autoTurnOn    = true;     // авто-переворот лотка
 unsigned long lastAutoTurnMs = 0; // когда был последний переворот
@@ -189,7 +189,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 </div>
 
 <script>
-let manualHeat = false;
+// состояние ручного нагрева хранит устройство; страница лишь зеркалит его
+let serverManual = false;
+let heatBusy = false;
 
 function api(url){
   return fetch(url).then(r=>r.json()).then(d=>{update(d);}).catch(()=>{
@@ -217,9 +219,10 @@ function update(d){
   mb.className = 'badge' + (d.manual?' on':'');
 
   const btn=document.getElementById('btnHeat');
-  manualHeat = d.manual;
-  btn.dataset.manual = d.manual ? '1' : '0';
-  if(manualHeat){ btn.textContent='Выключить ручной нагрев'; btn.className='full danger'; }
+  serverManual = !!d.manual;   // актуальное состояние с устройства (из ответа /status)
+  btn.disabled = false;
+  btn.dataset.manual = serverManual ? '1' : '0';
+  if(serverManual){ btn.textContent='Выключить ручной нагрев'; btn.className='full danger'; }
   else { btn.textContent='Включить вручную'; btn.className='full primary'; }
 
   const tb=document.getElementById('turnBadge');
@@ -240,7 +243,15 @@ function update(d){
 }
 
 function toggleHeat(){
-  fetch('/heat?on='+(manualHeat?0:1)).then(()=>api('/status'));
+  if(heatBusy) return;                 // защита от двойных нажатий
+  heatBusy = true;
+  const btn=document.getElementById('btnHeat');
+  btn.disabled = true;
+  const target = serverManual ? 0 : 1; // что сейчас реально включено — решает устройство
+  fetch('/heat?on='+target)
+    .then(r=>{ if(!r.ok) throw new Error('http '+r.status); return api('/status'); })
+    .catch(e=>{ console.error('toggleHeat:', e); heatBusy=false; btn.disabled=false; })
+    .finally(()=>{ heatBusy=false; btn.disabled=false; });
 }
 function applySetTemp(){
   const v=document.getElementById('rSet').value;
@@ -266,8 +277,8 @@ let demo = false, demoTemp = 36.8, demoHum = 55, demoUptime = 0, demoAuto = true
 
 // имитация команд на «устройстве», чтобы кнопки работали и без ESP32
 function demoCmd(url){
-  if(url.indexOf('/heat?on=1')>=0){ manualHeat = true; }
-  if(url.indexOf('/heat?on=0')>=0){ manualHeat = false; }
+  if(url.indexOf('/heat?on=1')>=0){ serverManual = true; }
+  if(url.indexOf('/heat?on=0')>=0){ serverManual = false; }
   if(url.indexOf('/autoturn?on=')>=0){ demoAuto = url.indexOf('on=1')>=0; }
 }
 
@@ -278,8 +289,8 @@ function demoTick(){
   demoHum  = Math.min(70, Math.max(45, demoHum + (Math.random()-0.5)*1.5));
   const setv = parseFloat(document.getElementById('rSet').value);
   update({temp:demoTemp, hum:demoHum, set:setv,
-          heating: manualHeat || demoTemp < setv - 0.3,
-          manual: manualHeat, turning:false, auto:demoAuto, uptime:demoUptime});
+          heating: serverManual || demoTemp < setv - 0.3,
+          manual: serverManual, turning:false, auto:demoAuto, uptime:demoUptime});
 }
 
 function startDemo(){
@@ -355,9 +366,16 @@ void sendOk() { server.send(200, "text/plain", "OK"); }
 // Включение/выключение ручного режима нагрева: /heat?on=1 | /heat?on=0
 void handleHeat() {
   if (server.hasArg("on")) {
-    manualHeat = server.arg("on") == "1";
-    // при выходе из ручного режима сразу глушим реле
-    if (!manualHeat) { heating = false; digitalWrite(RELAY_PIN, HIGH); }
+    bool on = server.arg("on") == "1";
+    // блокируем терморегулятор на время записи, чтобы loop() не перебил состояние
+    noInterrupts();
+    manualHeat = on;
+    heating = on;             // true при on=1, false при on=0 — реле управляется кнопкой напрямую
+    interrupts();
+    digitalWrite(RELAY_PIN, heating ? LOW : HIGH); // сразу дергаем реле, не дожидаясь loop
+    Serial.printf("/heat?on=%d -> реле %s\n", (int)on, heating ? "ВКЛ (LOW)" : "ВЫКЛ (HIGH)");
+  } else {
+    Serial.println("/heat БЕЗ параметра on!");
   }
   sendOk();
 }
@@ -417,14 +435,19 @@ void readSensor() {
 // Терморегулятор с гистерезисом вокруг уставки.
 // В ручном режиме нагрев включён всегда, пока пользователь не выключит.
 void regulateTemperature() {
-  if (manualHeat) {
-    heating = true;
+  bool mh;
+  noInterrupts();
+  mh = manualHeat;            // читаем атомарно (обработчик сайта пишет это состояние)
+  interrupts();
+
+  if (mh) {
+    heating = true;           // ручной нагрев с сайта — реле включено
   } else if (isnan(temperature)) {
-    heating = false;              // нет данных с датчика — не греем (защита от перегрева)
+    heating = false;          // нет данных с датчика — не греем (защита от перегрева)
   } else if (!heating && temperature < setTemp - HYSTERESIS) {
-    heating = true;               // стало холоднее уставки -0.3 -> включить
+    heating = true;           // стало холоднее уставки -0.3 -> включить
   } else if (heating && temperature > setTemp + HYSTERESIS) {
-    heating = false;              // стало горячее уставки +0.3 -> выключить
+    heating = false;          // стало горячее уставки +0.3 -> выключить
   }
 
   digitalWrite(RELAY_PIN, heating ? LOW : HIGH); // реле активное LOW!
@@ -485,9 +508,20 @@ void setup() {
   Serial.begin(115200);
   bootTimeMs = millis();
 
-  // Пины
+  // Пины. ВНИМАНИЕ: GPIO16 (D2) на многих модулях ESP32 при старте подтянут к
+  // земле внутренним pull-down -> реле активизируется и лампочка включается на
+  // пару секунд до инициализации. Решения:
+  //   а) аппаратное — поставить подтяку 10 кОм от D0/GPIO16 к 3V3 (или повесить
+  //      реле на другой пин, например GPIO4/GPIO25);
+  //   б) программное — как ниже: ставим OUTPUT+HIGH максимально рано.
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, HIGH); // реле выключено (активный LOW)
+
+  // Тест реле при старте: два коротких щелчка. Если лампочка НЕ мигнула —
+  // проблема в питании реле/перепутанных проводах, если мигнула — пин живой.
+  digitalWrite(RELAY_PIN, LOW); delay(120);
+  digitalWrite(RELAY_PIN, HIGH); delay(120);
+  Serial.println("Тест реле выполнен, реле выключено");
 
   stepper.setMaxSpeed(500);      // шаги/сек
   stepper.setAcceleration(300);

@@ -104,7 +104,9 @@
 </div>
 
 <script>
-let manualHeat = false;
+// состояние ручного нагрева хранит устройство; страница лишь зеркалит его
+let serverManual = false;
+let heatBusy = false;
 
 function api(url){
   return fetch(url).then(r=>r.json()).then(d=>{update(d);}).catch(()=>{
@@ -132,9 +134,10 @@ function update(d){
   mb.className = 'badge' + (d.manual?' on':'');
 
   const btn=document.getElementById('btnHeat');
-  manualHeat = d.manual;
-  btn.dataset.manual = d.manual ? '1' : '0';
-  if(manualHeat){ btn.textContent='Выключить ручной нагрев'; btn.className='full danger'; }
+  serverManual = !!d.manual;   // актуальное состояние с устройства (из ответа /status)
+  btn.disabled = false;
+  btn.dataset.manual = serverManual ? '1' : '0';
+  if(serverManual){ btn.textContent='Выключить ручной нагрев'; btn.className='full danger'; }
   else { btn.textContent='Включить вручную'; btn.className='full primary'; }
 
   const tb=document.getElementById('turnBadge');
@@ -155,7 +158,15 @@ function update(d){
 }
 
 function toggleHeat(){
-  fetch('/heat?on='+(manualHeat?0:1)).then(()=>api('/status'));
+  if(heatBusy) return;                 // защита от двойных нажатий
+  heatBusy = true;
+  const btn=document.getElementById('btnHeat');
+  btn.disabled = true;
+  const target = serverManual ? 0 : 1; // что сейчас реально включено — решает устройство
+  fetch('/heat?on='+target)
+    .then(r=>{ if(!r.ok) throw new Error('http '+r.status); return api('/status'); })
+    .catch(e=>{ console.error('toggleHeat:', e); heatBusy=false; btn.disabled=false; })
+    .finally(()=>{ heatBusy=false; btn.disabled=false; });
 }
 function applySetTemp(){
   const v=document.getElementById('rSet').value;
@@ -181,8 +192,8 @@ let demo = false, demoTemp = 36.8, demoHum = 55, demoUptime = 0, demoAuto = true
 
 // имитация команд на «устройстве», чтобы кнопки работали и без ESP32
 function demoCmd(url){
-  if(url.indexOf('/heat?on=1')>=0){ manualHeat = true; }
-  if(url.indexOf('/heat?on=0')>=0){ manualHeat = false; }
+  if(url.indexOf('/heat?on=1')>=0){ serverManual = true; }
+  if(url.indexOf('/heat?on=0')>=0){ serverManual = false; }
   if(url.indexOf('/autoturn?on=')>=0){ demoAuto = url.indexOf('on=1')>=0; }
 }
 
@@ -193,8 +204,8 @@ function demoTick(){
   demoHum  = Math.min(70, Math.max(45, demoHum + (Math.random()-0.5)*1.5));
   const setv = parseFloat(document.getElementById('rSet').value);
   update({temp:demoTemp, hum:demoHum, set:setv,
-          heating: manualHeat || demoTemp < setv - 0.3,
-          manual: manualHeat, turning:false, auto:demoAuto, uptime:demoUptime});
+          heating: serverManual || demoTemp < setv - 0.3,
+          manual: serverManual, turning:false, auto:demoAuto, uptime:demoUptime});
 }
 
 function startDemo(){
