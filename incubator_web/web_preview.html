@@ -3,255 +3,320 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Инкубатор — панель управления</title>
+<title>Инкубатор ESP32 v2.0 — Панель управления</title>
 <style>
   :root{
-    --bg:#10151c; --card:#1b2430; --accent:#ff9f1c; --ok:#2ecc71;
-    --bad:#e74c3c; --text:#e8eef4; --muted:#8fa1b3;
+    --bg:#0b0f17; --card:#151c28; --card-border:#222f42;
+    --accent:#ff9f1c; --accent-glow:rgba(255,159,28,0.25);
+    --ok:#10b981; --bad:#ef4444; --warn:#f59e0b;
+    --text:#f1f5f9; --muted:#94a3b8; --blue:#38bdf8;
   }
-  *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,Arial,sans-serif}
-  body{background:var(--bg);color:var(--text);min-height:100vh;padding:16px}
-  .wrap{max-width:520px;margin:0 auto}
-  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-  h1{font-size:20px}
-  #conn{font-size:12px;color:var(--ok)}
-  #conn.off{color:var(--bad)}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-  .card{background:var(--card);border-radius:14px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,.35)}
-  .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-  .value{font-size:30px;font-weight:700;margin-top:4px}
-  .value small{font-size:14px;color:var(--muted);font-weight:400}
-  .sub{font-size:12px;color:var(--muted);margin-top:4px}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
-  .badge{padding:4px 10px;border-radius:999px;font-size:12px;background:#2a3646;color:var(--muted)}
-  .badge.on{background:rgba(255,159,28,.15);color:var(--accent)}
-  button{border:none;border-radius:10px;padding:12px 16px;font-size:15px;font-weight:600;
-         cursor:pointer;background:#2a3646;color:var(--text);transition:.15s}
-  button:active{transform:scale(.97)}
-  button.primary{background:var(--accent);color:#10151c}
-  button.danger{background:var(--bad);color:#fff}
-  button.toggle-on{background:var(--ok);color:#0c1a12}
-  .full{width:100%}
-  .settemp{display:flex;align-items:center;gap:12px;margin-top:10px}
-  .settemp input[type=range]{flex:1;accent-color:var(--accent)}
-  .settemp output{font-size:20px;font-weight:700;min-width:70px;text-align:right}
-  fieldset{border:none;margin-top:12px}
-  legend{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-  footer{text-align:center;color:var(--muted);font-size:11px;margin-top:16px}
+  *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif}
+  body{background:var(--bg);color:var(--text);min-height:100vh;padding:14px;display:flex;justify-content:center}
+  .wrap{width:100%;max-width:540px}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 0 16px;border-bottom:1px solid var(--card-border);margin-bottom:14px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .logo{font-size:26px}
+  h1{font-size:19px;font-weight:700;letter-spacing:-0.3px}
+  .header-badges{display:flex;align-items:center;gap:8px}
+  .status-pill{font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;background:#1e293b;color:var(--muted)}
+  .status-pill.online{background:rgba(16,185,129,0.15);color:var(--ok);border:1px solid rgba(16,185,129,0.3)}
+  .status-pill.offline{background:rgba(239,68,68,0.15);color:var(--bad)}
+
+  .alert-banner{background:rgba(239,68,68,0.15);border:1px solid var(--bad);color:#fca5a5;padding:10px 14px;border-radius:12px;font-size:13px;margin-bottom:14px;display:none;align-items:center;gap:10px}
+  .alert-banner.show{display:flex}
+
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:14px;box-shadow:0 4px 16px rgba(0,0,0,0.35);position:relative;overflow:hidden}
+  .card-label{font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted);letter-spacing:0.5px;display:flex;justify-content:space-between}
+  .card-value{font-size:34px;font-weight:800;margin:6px 0 2px;letter-spacing:-0.5px}
+  .card-value small{font-size:16px;font-weight:500;color:var(--muted);margin-left:2px}
+  .card-sub{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px}
+  .temp-val{color:#fbbf24}
+  .hum-val{color:var(--blue)}
+
+  .section-card{background:var(--card);border:1px solid var(--card-border);border-radius:16px;padding:16px;margin-bottom:14px}
+  .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .section-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+
+  .indicator-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .chip{padding:6px 12px;border-radius:10px;font-size:12px;font-weight:600;background:#1e293b;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+  .chip.active-heat{background:rgba(255,159,28,0.18);color:var(--accent);border:1px solid rgba(255,159,28,0.4)}
+
+  .btn-row{display:flex;gap:8px;margin-top:10px}
+  button{flex:1;border:none;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:600;cursor:pointer;background:#1e293b;color:var(--text);display:flex;align-items:center;justify-content:center;gap:6px;transition:0.15s}
+  button:hover{background:#283548}
+  button:active{transform:scale(0.98)}
+  button.primary{background:var(--accent);color:#0f172a}
+  button.primary:hover{background:#f59518}
+  button.danger{background:#dc2626;color:#fff}
+  button.success{background:#10b981;color:#0b1e16}
+  button.outline{background:transparent;border:1px solid var(--card-border);color:var(--text)}
+
+  .slider-box{margin-top:12px}
+  .slider-header{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
+  input[type=range]{width:100%;height:8px;border-radius:4px;background:#1e293b;outline:none;accent-color:var(--accent);cursor:pointer}
+
+  .tray-visualizer{height:60px;background:#0d131d;border-radius:12px;border:1px dashed var(--card-border);display:flex;align-items:center;justify-content:center;position:relative;margin:10px 0}
+  .tray-beam{width:160px;height:8px;background:#38bdf8;border-radius:4px;transition:transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);position:relative}
+  .tray-beam::before, .tray-beam::after{content:'🥚';position:absolute;top:-18px;font-size:14px}
+  .tray-beam::before{left:16px}
+  .tray-beam::after{right:16px}
+  .tray-pivot{width:12px;height:12px;background:#f8fafc;border-radius:50%;position:absolute;z-index:2}
+
+  .preset-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+  .preset-btn{padding:8px 4px;font-size:11px;border-radius:10px;text-align:center;border:1px solid var(--card-border);background:#101724;cursor:pointer}
+  .preset-btn.active{border-color:var(--accent);background:var(--accent-glow);color:var(--accent);font-weight:700}
+
+  footer{text-align:center;color:var(--muted);font-size:11px;padding:16px 0;line-height:1.6}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>&#129360; Инкубатор</h1>
-    <span id="conn">соединение...</span>
+    <div class="brand">
+      <span class="logo">🥚</span>
+      <div>
+        <h1>Инкубатор ESP32</h1>
+        <div style="font-size:11px;color:var(--muted)">v2.0 &middot; Точка доступа Inkubator</div>
+      </div>
+    </div>
+    <div class="header-badges">
+      <span id="connBadge" class="status-pill online">Онлайн (Демо)</span>
+    </div>
   </header>
 
-  <div class="grid">
-    <div class="card">
-      <div class="label">Температура</div>
-      <div class="value" id="t">--.- <small>°C</small></div>
-      <div class="sub">уставка: <b id="st">--.-</b> °C</div>
-    </div>
-    <div class="card">
-      <div class="label">Влажность</div>
-      <div class="value" id="h">-- <small>%</small></div>
-      <div class="sub" id="htime">опрос каждые 2 с</div>
-    </div>
+  <div id="alertBanner" class="alert-banner">
+    <span style="font-size:18px">⚠️</span>
+    <span id="alertText">Авария датчика или перегрев!</span>
   </div>
 
-  <div class="card">
-    <div class="label">Обогрев (нагреватель)</div>
-    <div class="row">
-      <span class="badge" id="heatBadge">выключен</span>
-      <span class="badge" id="modeBadge">авто</span>
-    </div>
-    <div class="row">
-      <button class="full primary" id="btnHeat" onclick="toggleHeat()">Включить вручную</button>
-    </div>
-    <fieldset>
-      <legend>Задать температуру</legend>
-      <div class="settemp">
-        <input type="range" id="rSet" min="30" max="42" step="0.1" value="37.5"
-               oninput="document.getElementById('oSet').textContent=this.value+' °C'"
-               onchange="applySetTemp()">
-        <output id="oSet">37.5 °C</output>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-label">
+        <span>Температура</span>
+        <span>●</span>
       </div>
-    </fieldset>
-  </div>
-
-  <div class="card" style="margin-top:12px">
-    <div class="label">Поворот лотка</div>
-    <div class="row">
-      <span class="badge" id="turnBadge">готов</span>
-      <span class="badge" id="autoBadge">авто-переворот: вкл</span>
+      <div class="card-value temp-val" id="valTemp">37.8<small>°C</small></div>
+      <div class="card-sub">
+        <span>Уставка:</span> <b id="valSetTemp" style="color:var(--text)">37.8</b> °C
+      </div>
     </div>
-    <div class="row">
-      <button class="primary" onclick="turnEgg()">&#8635; Перевернуть</button>
-      <button id="btnAuto" class="toggle-on" onclick="toggleAuto()">Авто: ВКЛ</button>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:12px">
-    <div class="label">Система</div>
-    <div class="row">
-      <span class="badge" id="uptime">00:00:00</span>
-      <button class="danger" onclick="reboot()">&#128260; Перезагрузка</button>
+    <div class="card">
+      <div class="card-label">
+        <span>Влажность</span>
+        <span>Цель: 55%</span>
+      </div>
+      <div class="card-value hum-val" id="valHum">56<small>%</small></div>
+      <div class="card-sub">
+        <span>Оптимально</span>
+      </div>
     </div>
   </div>
 
-  <footer>ESP32 &middot; Точка доступа Inkubator &middot; 192.168.4.1</footer>
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-title"><span>📅</span> День инкубации</div>
+      <div class="chip" id="presetNameBadge">Курица</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:22px;font-weight:700">День <span id="dayNum">3</span> <span style="font-size:13px;font-weight:400;color:var(--muted)">из 21</span></div>
+      <div style="font-size:12px;color:var(--muted)" id="daysLeftText">Осталось 18 дней</div>
+    </div>
+    <div style="width:100%;height:6px;background:#1e293b;border-radius:3px;overflow:hidden">
+      <div id="dayProgress" style="width:14%;height:100%;background:var(--accent);transition:0.3s"></div>
+    </div>
+    <div class="preset-grid">
+      <button class="preset-btn active" onclick="setPreset('Курица', 37.8, 21)">Курица<br><small style="color:var(--muted)">21 дн</small></button>
+      <button class="preset-btn" onclick="setPreset('Перепел', 37.7, 17)">Перепел<br><small style="color:var(--muted)">17 дн</small></button>
+      <button class="preset-btn" onclick="setPreset('Утка', 37.5, 28)">Утка<br><small style="color:var(--muted)">28 дн</small></button>
+      <button class="preset-btn" onclick="setPreset('Гусь', 37.4, 30)">Гусь<br><small style="color:var(--muted)">30 дн</small></button>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-title"><span>🔥</span> Обогрев (Реле)</div>
+      <div class="chip" id="heatStatusChip">Выключен</div>
+    </div>
+    <div class="indicator-row">
+      <span class="chip" id="modeChip">Автопилот</span>
+      <span class="chip">±0.2 °C гистерезис</span>
+    </div>
+    <div class="slider-box">
+      <div class="slider-header">
+        <span>Целевая температура инкубатора</span>
+        <b id="sliderValDisplay" style="color:var(--accent);font-size:14px">37.8 °C</b>
+      </div>
+      <input type="range" id="tempSlider" min="35.0" max="40.0" step="0.1" value="37.8"
+             oninput="applySetTemp(this.value)">
+    </div>
+    <div class="btn-row">
+      <button id="btnManualHeat" class="outline" onclick="toggleManualHeat()">
+        <span>⚡</span> Ручной нагрев
+      </button>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-title"><span>🔄</span> Поворот лотка (ULN2003)</div>
+      <div class="chip" id="trayPosChip">Центр (0°)</div>
+    </div>
+    <div class="tray-visualizer">
+      <div class="tray-pivot"></div>
+      <div class="tray-beam" id="trayBeam"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:10px">
+      <span>Авто-переворот: <b id="autoTurnText" style="color:var(--ok)">Каждые 2 ч</b></span>
+      <span id="nextTurnCountdown">Следующий через 1ч 42м</span>
+    </div>
+    <div class="btn-row">
+      <button class="primary" onclick="turnTray()"><span>↻</span> Повернуть</button>
+      <button id="btnAutoTurn" class="success" onclick="toggleAutoTurn()">Авто: ВКЛ</button>
+      <button class="outline" onclick="centerTray()">Центр</button>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-title"><span>ℹ️</span> Система ESP32</div>
+      <span id="uptimeText" style="font-size:12px;color:var(--muted)">00:04:12</span>
+    </div>
+    <div class="btn-row">
+      <button class="outline" onclick="advanceDay()"><span>+1</span> След. день</button>
+      <button class="danger" onclick="alert('ESP32 перезагружается...')"><span>⟳</span> Перезагрузка</button>
+    </div>
+  </div>
+
+  <footer>
+    ESP32 Incubator Automation v2.0 (Демонстрационный режим предпросмотра)<br>
+    Защита обмоток ULN2003 &middot; NVS Память &middot; http://192.168.4.1
+  </footer>
 </div>
 
 <script>
-// состояние ручного нагрева хранит устройство; страница лишь зеркалит его
-let serverManual = false;
-let heatBusy = false;
-
-function api(url){
-  return fetch(url).then(r=>r.json()).then(d=>{update(d);}).catch(()=>{
-    document.getElementById('conn').textContent='нет связи';
-    document.getElementById('conn').className='off';
-  });
-}
-
-function update(d){
-  const conn=document.getElementById('conn');
-  conn.textContent='онлайн'; conn.className='';
-
-  document.getElementById('t').innerHTML =
-    (d.temp==null?'--.-':Number(d.temp).toFixed(1))+' <small>°C</small>';
-  document.getElementById('h').innerHTML =
-    (d.hum==null?'--':Number(d.hum).toFixed(0))+' <small>%</small>';
-  document.getElementById('st').textContent = Number(d.set).toFixed(1);
-
-  const hb=document.getElementById('heatBadge');
-  hb.textContent = d.heating ? 'нагрев ВКЛ' : 'выключен';
-  hb.className = 'badge' + (d.heating?' on':'');
-
-  const mb=document.getElementById('modeBadge');
-  mb.textContent = d.manual ? 'ручной режим' : 'авто';
-  mb.className = 'badge' + (d.manual?' on':'');
-
-  const btn=document.getElementById('btnHeat');
-  serverManual = !!d.manual;   // актуальное состояние с устройства (из ответа /status)
-  btn.disabled = false;
-  btn.dataset.manual = serverManual ? '1' : '0';
-  if(serverManual){ btn.textContent='Выключить ручной нагрев'; btn.className='full danger'; }
-  else { btn.textContent='Включить вручную'; btn.className='full primary'; }
-
-  const tb=document.getElementById('turnBadge');
-  tb.textContent = d.turning ? 'поворот...' : 'готов';
-  tb.className = 'badge' + (d.turning?' on':'');
-
-  const ab=document.getElementById('autoBadge');
-  ab.textContent = 'авто-переворот: ' + (d.auto?'вкл':'выкл');
-  const ba=document.getElementById('btnAuto');
-  ba.textContent = 'Авто: ' + (d.auto?'ВКЛ':'ВЫКЛ');
-  ba.className = d.auto ? 'toggle-on' : '';
-
-  const s=d.uptime|0;
-  const hh=String(Math.floor(s/3600)).padStart(2,'0');
-  const mm=String(Math.floor(s/60)%60).padStart(2,'0');
-  const ss=String(s%60).padStart(2,'0');
-  document.getElementById('uptime').textContent = hh+':'+mm+':'+ss;
-}
-
-function toggleHeat(){
-  if(heatBusy) return;                 // защита от двойных нажатий
-  heatBusy = true;
-  const btn=document.getElementById('btnHeat');
-  btn.disabled = true;
-  const target = serverManual ? 0 : 1; // что сейчас реально включено — решает устройство
-  fetch('/heat?on='+target)
-    .then(r=>{ if(!r.ok) throw new Error('http '+r.status); return api('/status'); })
-    .catch(e=>{ console.error('toggleHeat:', e); heatBusy=false; btn.disabled=false; })
-    .finally(()=>{ heatBusy=false; btn.disabled=false; });
-}
-function applySetTemp(){
-  const v=document.getElementById('rSet').value;
-  document.getElementById('oSet').textContent=v+' °C';
-  fetch('/settemp?v='+v).then(()=>api('/status'));
-}
-function turnEgg(){ fetch('/turn'); setTimeout(()=>api('/status'),1000); }
-function toggleAuto(){
-  fetch('/autoturn?on='+((document.getElementById('btnAuto').textContent.indexOf('ВКЛ')>=0)?0:1))
-    .then(()=>api('/status'));
-}
-function reboot(){ if(confirm('Перезагрузить ESP32?')) fetch('/reboot'); }
-
-api('/status');
-setInterval(()=>api('/status'), 2000);
-</script>
-
-<script>
-/* Демо-режим: если открыть файл локально (file://) или сервер недоступен —
-   показываем правдоподобные данные вместо пустой страницы. На реальном
-   ESP32 этот блок неактивен (fetch к /status проходит успешно). */
-let demo = false, demoTemp = 36.8, demoHum = 55, demoUptime = 0, demoAuto = true;
-
-// имитация команд на «устройстве», чтобы кнопки работали и без ESP32
-function demoCmd(url){
-  if(url.indexOf('/heat?on=1')>=0){ serverManual = true; }
-  if(url.indexOf('/heat?on=0')>=0){ serverManual = false; }
-  if(url.indexOf('/autoturn?on=')>=0){ demoAuto = url.indexOf('on=1')>=0; }
-}
-
-function demoTick(){
-  demoUptime += 2;
-  demoTemp += (Math.random()-0.48)*0.1;
-  demoTemp = Math.min(38.2, Math.max(36.2, demoTemp));
-  demoHum  = Math.min(70, Math.max(45, demoHum + (Math.random()-0.5)*1.5));
-  const setv = parseFloat(document.getElementById('rSet').value);
-  update({temp:demoTemp, hum:demoHum, set:setv,
-          heating: serverManual || demoTemp < setv - 0.3,
-          manual: serverManual, turning:false, auto:demoAuto, uptime:demoUptime});
-}
-
-function startDemo(){
-  if(demo) return;
-  demo = true;
-  const conn=document.getElementById('conn');
-  conn.textContent='демо-режим (нет ESP32)'; conn.className='off';
-  setInterval(demoTick, 2000);
-  demoTick(); // сразу показываем данные, не дожидаясь первого тика
-}
-
-const _fetch = window.fetch ? window.fetch.bind(window) : null;
-window.fetch = function(url, opt){
-  if(demo && typeof url==='string' && url[0]==='/'){ demoCmd(url); return Promise.resolve(new Response('OK')); }
-  return _fetch ? _fetch(url, opt) : Promise.reject('no fetch');
+let state = {
+  temp: 37.7,
+  hum: 56,
+  set: 37.8,
+  heating: false,
+  manual: false,
+  trayPos: 0,
+  auto: true,
+  day: 3,
+  totalDays: 21,
+  uptime: 252
 };
 
-// Переопределяем api(): при недоступности сервера (открытие файла локально,
-// ESP32 выключен) — включаем демо-режим с имитацией данных инкубатора.
-const _apiOrig = api;
-api = function(url){
-  // если демо уже активен — команды не отправляем, просто обновляем картинку
-  if(demo && typeof url==='string' && url[0]==='/'){ demoTick(); return Promise.resolve(); }
-  // свой промис в текущем контексте: надёжно отрабатывает и тогда, когда
-  // оригинальный api() «глотает» ошибку внутри себя
-  return new Promise(function(resolve){
-    var settled = false;
-    function enterDemo(){ if(!settled){ settled = true; startDemo(); } resolve(); }
-    try {
-      var p = _apiOrig(url);
-      if(p && typeof p.then === 'function'){
-        p.then(function(){
-          // сервер не ответил (оригинал перехватил ошибку) -> коннект «потух»
-          setTimeout(function(){
-            if(!demo && document.getElementById('conn').textContent === 'нет связи'){ enterDemo(); }
-            else resolve();
-          }, 0);
-        }, enterDemo);
-      } else { enterDemo(); }
-    } catch(e){ enterDemo(); }
-    // страховка: если промис завис — демо включится через 4 секунды
-    setTimeout(function(){
-      if(!demo && document.getElementById('conn').textContent === 'нет связи'){ enterDemo(); }
-    }, 4000);
+function render(){
+  document.getElementById('valTemp').innerHTML = state.temp.toFixed(1) + '<small>°C</small>';
+  document.getElementById('valHum').innerHTML = Math.round(state.hum) + '<small>%</small>';
+  document.getElementById('valSetTemp').textContent = state.set.toFixed(1);
+  document.getElementById('sliderValDisplay').textContent = state.set.toFixed(1) + ' °C';
+  document.getElementById('tempSlider').value = state.set.toFixed(1);
+
+  const hc = document.getElementById('heatStatusChip');
+  hc.textContent = state.heating ? 'Нагрев ВКЛ' : 'Выключен';
+  hc.className = 'chip' + (state.heating ? ' active-heat' : '');
+
+  const mc = document.getElementById('modeChip');
+  const btnM = document.getElementById('btnManualHeat');
+  mc.textContent = state.manual ? 'Ручной режим!' : 'Автопилот';
+  mc.className = 'chip' + (state.manual ? ' active-heat' : '');
+  btnM.className = state.manual ? 'danger' : 'outline';
+  btnM.innerHTML = state.manual ? '<span>✕</span> Откл. ручной' : '<span>⚡</span> Ручной нагрев';
+
+  const beam = document.getElementById('trayBeam');
+  const posChip = document.getElementById('trayPosChip');
+  if(state.trayPos === -1){
+    beam.style.transform = 'rotate(-25deg)';
+    posChip.textContent = 'Наклон влево (-45°)';
+  } else if(state.trayPos === 1){
+    beam.style.transform = 'rotate(25deg)';
+    posChip.textContent = 'Наклон вправо (+45°)';
+  } else {
+    beam.style.transform = 'rotate(0deg)';
+    posChip.textContent = 'Горизонт (0°)';
+  }
+
+  const btnA = document.getElementById('btnAutoTurn');
+  btnA.textContent = state.auto ? 'Авто: ВКЛ' : 'Авто: ВЫКЛ';
+  btnA.className = state.auto ? 'success' : 'outline';
+
+  document.getElementById('dayNum').textContent = state.day;
+  const pct = Math.min(100, Math.round((state.day / state.totalDays) * 100));
+  document.getElementById('dayProgress').style.width = pct + '%';
+  const left = state.totalDays - state.day;
+  document.getElementById('daysLeftText').textContent = left > 0 ? ('Осталось: ' + left + ' дн') : 'Вылупление!';
+
+  const s = state.uptime;
+  const hh = String(Math.floor(s/3600)).padStart(2,'0');
+  const mm = String(Math.floor(s/60)%60).padStart(2,'0');
+  const ss = String(s%60).padStart(2,'0');
+  document.getElementById('uptimeText').textContent = 'Аптайм: ' + hh + ':' + mm + ':' + ss;
+}
+
+function applySetTemp(v){
+  state.set = parseFloat(v);
+  render();
+}
+
+function toggleManualHeat(){
+  state.manual = !state.manual;
+  state.heating = state.manual;
+  render();
+}
+
+function turnTray(){
+  state.trayPos = (state.trayPos === -1) ? 1 : -1;
+  render();
+}
+
+function centerTray(){
+  state.trayPos = 0;
+  render();
+}
+
+function toggleAutoTurn(){
+  state.auto = !state.auto;
+  render();
+}
+
+function advanceDay(){
+  if(state.day < state.totalDays) state.day++;
+  render();
+}
+
+function setPreset(name, t, d){
+  state.set = t;
+  state.totalDays = d;
+  document.getElementById('presetNameBadge').textContent = name;
+  document.querySelectorAll('.preset-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.includes(name));
   });
-};
+  render();
+}
+
+// Плавная физическая симуляция температуры
+setInterval(() => {
+  state.uptime += 2;
+  if(state.heating){
+    state.temp += 0.08;
+    if(state.temp > state.set + 0.2 && !state.manual){
+      state.heating = false;
+    }
+  } else {
+    state.temp -= 0.04;
+    if(state.temp < state.set - 0.2){
+      state.heating = true;
+    }
+  }
+  state.hum = Math.min(75, Math.max(45, state.hum + (Math.random() - 0.5) * 0.4));
+  render();
+}, 2000);
+
+render();
 </script>
 </body>
 </html>
